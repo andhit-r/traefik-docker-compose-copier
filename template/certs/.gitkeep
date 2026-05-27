@@ -1,0 +1,13 @@
+# Place local TLS certificate files here.
+#
+# Supported formats: PEM (.pem, .crt, .key)
+# Reference them in ../config.yml under tls.certificates.
+#
+# Example:
+#   tls:
+#     certificates:
+#       - certFile: "/etc/certs/my-cert.pem"
+#         keyFile:  "/etc/certs/my-cert-key.pem"
+#
+# This directory is mounted read-only into the Traefik container.
+# DO NOT commit private key files to version control.

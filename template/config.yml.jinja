@@ -1,0 +1,77 @@
+# Dynamic configuration for Traefik.
+# This file is watched for changes at runtime – no restart required.
+
+http:
+
+  # ── Server transports ───────────────────────────────────────────────────
+  serversTransports:
+    insecure-transport:
+      # Use only for back-ends with self-signed certificates.
+      insecureSkipVerify: true
+
+  # ── Middlewares ─────────────────────────────────────────────────────────
+  middlewares:
+
+    # Large request / response buffering (useful for file-upload services)
+    buffering:
+      buffering:
+        memResponseBodyBytes: 209715200   # 200 MiB
+        maxResponseBodyBytes: 209715200
+        memRequestBodyBytes:  209715200
+        maxRequestBodyBytes:  209715200
+        retryExpression: "IsNetworkError() && Attempts() < 5"
+
+    # Gzip / Brotli compression
+    compress:
+      compress: {}
+
+    # Strict security headers
+    secure-headers:
+      headers:
+        forceSTSHeader: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          X-Powered-By: ""
+
+    # Prevent search-engine indexing
+    nocrawlers:
+      headers:
+        customResponseHeaders:
+          X-Robots-Tag: "noindex, nofollow"
+
+    # Disable caching for private / dynamic responses
+    no-cache:
+      headers:
+        customResponseHeaders:
+          Cache-Control: "private, no-cache, no-store, must-revalidate"
+
+    # Composite chain for typical Odoo / Doodba deployments
+    doodba:
+      chain:
+        middlewares:
+          - buffering
+          - compress
+          - secure-headers
+
+    # Allow only local / private network access
+    localhost-only:
+      ipAllowList:
+        sourceRange:
+          - "127.0.0.1/32"
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+
+# ── TLS ─────────────────────────────────────────────────────────────────
+# Place your local / self-signed certificates in ./certs/ and reference
+# them here. This section is optional when using ACME (Let's Encrypt).
+#
+# tls:
+#   certificates:
+#     - certFile: "/etc/certs/cert.pem"
+#       keyFile:  "/etc/certs/key.pem"

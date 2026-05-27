@@ -1,0 +1,120 @@
+name: Test Copier Template
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Lint ────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install yamllint
+
+      - name: Lint copier.yml
+        run: yamllint -d relaxed copier.yml
+
+      - name: Lint scenario answer files
+        run: yamllint -d relaxed tests/scenarios/
+
+  # ── Unit / integration tests ────────────────────────────────────────────
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  # ── Validate generated output ───────────────────────────────────────────
+  validate-output:
+    name: Validate output (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - no_auth
+          - basic_auth
+          - authentik
+          - with_beszel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install copier and pyyaml
+        run: pip install copier pyyaml
+
+      - name: Generate template – ${{ matrix.scenario }}
+        run: |
+          copier copy . /tmp/output \
+            --defaults \
+            --overwrite \
+            --trust \
+            --data-file tests/scenarios/${{ matrix.scenario }}.yml
+
+      - name: Validate generated YAML files
+        run: |
+          python - <<'EOF'
+          import sys, yaml, pathlib
+
+          out = pathlib.Path("/tmp/output")
+          failures = []
+
+          for name in ("docker-compose.yml", "traefik.yml", "config.yml"):
+              path = out / name
+              try:
+                  data = yaml.safe_load(path.read_text())
+                  if not isinstance(data, dict):
+                      raise ValueError("root is not a mapping")
+                  print(f"  OK  {name}")
+              except Exception as exc:
+                  print(f"FAIL  {name}: {exc}")
+                  failures.append(name)
+
+          if failures:
+              sys.exit(1)
+          EOF
+
+      - name: docker compose config (syntax check)
+        working-directory: /tmp/output
+        run: docker compose config -q && echo "docker compose config OK"

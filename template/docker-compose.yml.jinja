@@ -1,0 +1,114 @@
+services:
+
+  # ── Traefik reverse proxy ──────────────────────────────────────────────────
+  proxy:
+    image: traefik:{{ traefik_version }}
+    container_name: {{ project_name }}-proxy
+    networks:
+      shared:
+      private:
+      public:
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - dockersocket
+    restart: unless-stopped
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./config.yml:/etc/traefik/config.yml:ro
+      - ./certs:/etc/certs:ro
+      - acme:/etc/traefik/acme:rw
+    labels:
+      # ── Global enable ──────────────────────────────────────────────────────
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ network_prefix }}_shared"
+
+      # ── Middlewares ────────────────────────────────────────────────────────
+      # HTTP → HTTPS redirect
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+      # IP allowlist for monitoring/admin endpoints
+      - "traefik.http.middlewares.monitoring-allowlist.ipallowlist.sourcerange={{ trusted_ips }}"
+{%- if dashboard_auth == 'basic' %}
+      # Basic Auth middleware
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users={{ basic_auth_users }}"
+{%- elif dashboard_auth == 'authentik' %}
+      # Authentik ForwardAuth middleware
+      - "traefik.http.middlewares.authentik.forwardauth.address={{ authentik_outpost_url }}"
+      - "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt,X-authentik-meta-jwks,X-authentik-meta-outpost,X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
+{%- endif %}
+
+      # ── Dashboard router ───────────────────────────────────────────────────
+      - "traefik.http.routers.api.rule=Host(`{{ traefik_domain }}`)"
+      - "traefik.http.routers.api.entrypoints=https"
+      - "traefik.http.routers.api.tls.certResolver=letsencrypt"
+      - "traefik.http.routers.api.service=api@internal"
+{%- if dashboard_auth == 'basic' %}
+      - "traefik.http.routers.api.middlewares=dashboard-auth"
+{%- elif dashboard_auth == 'authentik' %}
+      - "traefik.http.routers.api.middlewares=authentik"
+{%- endif %}
+
+  # ── Docker socket proxy ────────────────────────────────────────────────────
+  # Exposes only the required Docker API endpoints to Traefik,
+  # keeping the full Docker socket away from the proxy container.
+  dockersocket:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: {{ project_name }}-dockersocket
+    restart: unless-stopped
+    networks:
+      private:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+      SERVICES: 1
+      SWARM: 1
+      TASKS: 1
+
+{% if enable_beszel_agent %}
+  # ── Beszel monitoring agent ────────────────────────────────────────────────
+  beszel-agent:
+    image: henrygd/beszel-agent:latest
+    container_name: {{ project_name }}-beszel-agent
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - beszel_agent_data:/var/lib/beszel-agent
+    environment:
+      LISTEN: {{ beszel_listen_port }}
+      KEY: "{{ beszel_key }}"
+      TOKEN: "{{ beszel_token }}"
+      HUB_URL: "{{ beszel_hub_url }}"
+
+{% endif %}
+# ── Networks ───────────────────────────────────────────────────────────────
+networks:
+  # Containers that should be reachable by Traefik attach to this network
+  shared:
+    name: {{ network_prefix }}_shared
+    internal: true
+    driver_opts:
+      encrypted: "1"
+
+  # Isolated network for the Docker socket proxy
+  private:
+    name: {{ network_prefix }}_private
+    internal: true
+    driver_opts:
+      encrypted: "1"
+
+  # External-facing network (internet traffic flows through here)
+  public:
+    name: {{ network_prefix }}_public
+
+# ── Volumes ────────────────────────────────────────────────────────────────
+volumes:
+  acme:
+{%- if enable_beszel_agent %}
+  beszel_agent_data:
+{%- endif %}

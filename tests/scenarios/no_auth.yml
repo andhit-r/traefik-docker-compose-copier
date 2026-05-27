@@ -1,0 +1,12 @@
+# Scenario: No dashboard authentication, no Beszel agent.
+# Use with: copier copy <template> <dst> --defaults --data-file tests/scenarios/no_auth.yml
+
+project_name: my-traefik
+network_prefix: inverseproxy
+traefik_version: "v3"
+traefik_domain: "traefik.example.com"
+acme_email: "admin@example.com"
+log_level: INFO
+trusted_ips: "127.0.0.1/32,172.16.0.0/12,10.0.0.0/8"
+dashboard_auth: none
+enable_beszel_agent: false

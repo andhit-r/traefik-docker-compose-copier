@@ -1,0 +1,19 @@
+# ── Traefik ACME / certificate storage ──────────────────────────────────────
+# These are managed inside Docker volumes, not local directories.
+# The 'acme' volume stores Let's Encrypt certificates.
+
+# ── Local TLS certificates ───────────────────────────────────────────────────
+# Place any local / self-signed PEM files here.
+# Reference them in config.yml under the tls.certificates section.
+certs/*.pem
+certs/*.key
+certs/*.crt
+
+# ── Copier answers file ──────────────────────────────────────────────────────
+# Contains template answers used for future `copier update` runs.
+# Safe to commit if it contains no secrets; remove secrets before committing.
+# .copier-answers.yml
+
+# ── Environment overrides ────────────────────────────────────────────────────
+.env
+.env.local

@@ -1,0 +1,58 @@
+# ── Global ─────────────────────────────────────────────────────────────────
+global:
+  sendAnonymousUsage: false
+
+# ── Providers ──────────────────────────────────────────────────────────────
+providers:
+  docker:
+    # Use the socket proxy instead of mounting /var/run/docker.sock directly
+    endpoint: "http://dockersocket:2375"
+    watch: true
+    exposedByDefault: false
+    network: {{ network_prefix }}_shared
+
+  file:
+    filename: /etc/traefik/config.yml
+    watch: true
+
+# ── Logging ────────────────────────────────────────────────────────────────
+log:
+  level: {{ log_level }}
+
+accessLog: {}
+
+# ── Entry points ───────────────────────────────────────────────────────────
+entryPoints:
+  http:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: https
+          scheme: https
+          permanent: true
+
+  https:
+    address: ":443"
+    http:
+      tls: {}
+    forwardedHeaders:
+      # Trust forwarded headers from all sources.
+      # Restrict this to your CDN / load-balancer CIDRs in production.
+      trustedIPs:
+        - "0.0.0.0/0"
+        - "::/0"
+
+# ── API & Dashboard ────────────────────────────────────────────────────────
+api:
+  dashboard: true
+
+# ── Certificate resolvers ──────────────────────────────────────────────────
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "{{ acme_email }}"
+      storage: "/etc/traefik/acme/acme-v2.json"
+      # Uncomment the line below to use the Let's Encrypt staging CA for testing:
+      # caServer: "https://acme-staging-v02.api.letsencrypt.org/directory"
+      tlsChallenge: {}

@@ -1,0 +1,126 @@
+_subdirectory: template
+_min_copier_version: "9"
+_answers_file: ".copier-answers.yml"
+
+# ──────────────────────────────────────────────────────────────
+# Project basics
+# ──────────────────────────────────────────────────────────────
+
+project_name:
+  type: str
+  help: "Project name (used for container / volume naming)"
+  default: traefik
+
+network_prefix:
+  type: str
+  help: |
+    Prefix for Docker network names.
+    Three networks will be created:
+      <prefix>_shared  – internal, encrypted  (services attach here)
+      <prefix>_private – internal, encrypted  (socket proxy only)
+      <prefix>_public  – external-facing      (traefik → internet)
+  default: inverseproxy
+
+# ──────────────────────────────────────────────────────────────
+# Traefik image
+# ──────────────────────────────────────────────────────────────
+
+traefik_version:
+  type: str
+  help: "Traefik Docker image tag (see https://hub.docker.com/_/traefik/tags)"
+  default: "v3"
+
+# ──────────────────────────────────────────────────────────────
+# Domain & TLS
+# ──────────────────────────────────────────────────────────────
+
+traefik_domain:
+  type: str
+  help: "Fully-qualified domain for the Traefik dashboard (e.g. traefik.example.com)"
+  default: "traefik.example.com"
+
+acme_email:
+  type: str
+  help: "E-mail address for Let's Encrypt ACME certificate notifications"
+  default: "admin@example.com"
+
+# ──────────────────────────────────────────────────────────────
+# Traefik runtime options
+# ──────────────────────────────────────────────────────────────
+
+log_level:
+  type: str
+  help: "Traefik log level"
+  choices: [DEBUG, INFO, WARNING, ERROR]
+  default: INFO
+
+trusted_ips:
+  type: str
+  help: "Comma-separated CIDR ranges allowed by the monitoring IP-allowlist middleware"
+  default: "127.0.0.1/32,172.16.0.0/12,10.0.0.0/8"
+
+# ──────────────────────────────────────────────────────────────
+# Dashboard authentication
+# ──────────────────────────────────────────────────────────────
+
+dashboard_auth:
+  type: str
+  help: |
+    Dashboard authentication method:
+      none      – no auth (not recommended for public-facing deployments)
+      basic     – HTTP Basic Auth via htpasswd
+      authentik – ForwardAuth via an Authentik outpost
+  choices: [none, basic, authentik]
+  default: basic
+
+# ── Basic Auth ────────────────────────────────────────────────
+
+basic_auth_users:
+  type: str
+  help: |
+    Credentials in htpasswd format (escape each $ as $$ for Docker Compose).
+    Generate with:
+      echo $(htpasswd -nB admin) | sed -e 's/\$/\$\$/g'
+  default: "admin:$$2y$$05$$PlaceholderHashedPasswordChangeMe000000000000000"
+  when: "{{ dashboard_auth == 'basic' }}"
+
+# ── Authentik ─────────────────────────────────────────────────
+
+authentik_outpost_url:
+  type: str
+  help: "Authentik outpost URL ending with /outpost.goauthentik.io/auth/traefik"
+  default: "https://auth.example.com/outpost.goauthentik.io/auth/traefik"
+  when: "{{ dashboard_auth == 'authentik' }}"
+
+# ──────────────────────────────────────────────────────────────
+# Beszel monitoring agent (optional)
+# ──────────────────────────────────────────────────────────────
+
+enable_beszel_agent:
+  type: bool
+  help: "Include the Beszel monitoring agent service?"
+  default: false
+
+beszel_listen_port:
+  type: int
+  help: "TCP port the Beszel agent listens on"
+  default: 45876
+  when: "{{ enable_beszel_agent }}"
+
+beszel_key:
+  type: str
+  help: "SSH public key provided by the Beszel hub (Settings → Add system)"
+  default: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIYourPublicKeyHere"
+  when: "{{ enable_beszel_agent }}"
+
+beszel_token:
+  type: str
+  help: "Beszel agent registration token"
+  default: "your-beszel-registration-token"
+  when: "{{ enable_beszel_agent }}"
+
+beszel_hub_url:
+  type: str
+  help: "Base URL of the Beszel hub"
+  default: "https://beszel.example.com"
+  when: "{{ enable_beszel_agent }}"
