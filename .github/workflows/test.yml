@@ -121,3 +121,83 @@ jobs:
       - name: docker compose config (syntax check)
         working-directory: /tmp/output
         run: docker compose config -q && echo "docker compose config OK"
+
+  # ── Docker Compose up ──────────────────────────────────────────────────────
+  compose-up:
+    name: compose up (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - no_auth
+          - basic_auth
+          - authentik
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install copier
+        run: pip install copier
+
+      - name: Generate template – ${{ matrix.scenario }}
+        run: |
+          copier copy . /tmp/output \
+            --defaults \
+            --overwrite \
+            --trust \
+            --data-file tests/scenarios/${{ matrix.scenario }}.yml
+
+      - name: docker compose up
+        working-directory: /tmp/output
+        run: docker compose up -d
+
+      - name: Wait for containers to settle
+        run: sleep 10
+
+      - name: Verify core services are running
+        working-directory: /tmp/output
+        run: |
+          echo "=== docker compose ps ==="
+          docker compose ps
+          echo ""
+
+          running=$(docker compose ps --services --filter status=running)
+          echo "Running services: $running"
+
+          echo "$running" | grep -q "^proxy$" \
+            || { echo "FAIL: proxy is not running"; docker compose logs proxy; exit 1; }
+
+          echo "$running" | grep -q "^dockersocket$" \
+            || { echo "FAIL: dockersocket is not running"; docker compose logs dockersocket; exit 1; }
+
+          echo "All core services are running."
+
+      - name: Verify no service exited unexpectedly
+        working-directory: /tmp/output
+        run: |
+          exited=$(docker compose ps --services --filter status=exited)
+          if [ -n "$exited" ]; then
+            echo "FAIL: the following services exited: $exited"
+            docker compose logs $exited
+            exit 1
+          fi
+          echo "No unexpected exits."
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: /tmp/output
+        run: docker compose logs --no-log-prefix
+
+      - name: docker compose down
+        if: always()
+        working-directory: /tmp/output
+        run: docker compose down --volumes --remove-orphans
