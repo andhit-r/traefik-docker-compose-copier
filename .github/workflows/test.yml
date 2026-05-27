@@ -23,6 +23,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install lint tools
         run: pip install yamllint
@@ -51,6 +52,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
@@ -80,6 +82,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install copier and pyyaml
         run: pip install copier pyyaml
