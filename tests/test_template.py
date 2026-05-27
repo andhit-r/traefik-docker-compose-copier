@@ -18,7 +18,7 @@ import pytest
 import yaml
 from copier import run_copy
 
-from tests.conftest import TEMPLATE_ROOT
+TEMPLATE_ROOT = Path(__file__).parent.parent
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
