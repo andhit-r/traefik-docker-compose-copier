@@ -127,12 +127,137 @@ Paste the output as the value for `basic_auth_users`.
 
 ## Authentik setup
 
-1. In Authentik, create a **Proxy Provider** in *Forward auth (single application)*
-   or *Forward auth (domain level)* mode for the Traefik dashboard application.
-2. Assign it to an **Outpost**.
-3. Copy the outpost URL from **Applications → Outposts → [outpost] → View Setup** –
-   it ends with `/outpost.goauthentik.io/auth/traefik`.
-4. Paste that URL as `authentik_outpost_url` when running Copier.
+### Prerequisites
+
+- Authentik is already running and accessible (e.g., at `https://auth.example.com`).
+- Authentik's embedded outpost **or** a dedicated proxy outpost is deployed and reachable by Traefik.
+- The Authentik container/outpost must be on the **`<network_prefix>_shared`** Docker network so Traefik can reach it. Add the network to your Authentik Compose file:
+
+  ```yaml
+  networks:
+    inverseproxy_shared:
+      external: true
+  ```
+
+  Then attach the outpost service to it:
+
+  ```yaml
+  services:
+    authentik-proxy:   # your outpost service name
+      networks:
+        - inverseproxy_shared
+  ```
+
+---
+
+### Step 1 — Create an Application
+
+1. Go to **Admin Interface → Applications → Applications → Create**.
+2. Fill in:
+   - **Name**: e.g., `Traefik Dashboard`
+   - **Slug**: e.g., `traefik-dashboard`
+   - **Provider**: leave empty for now (we'll create it next).
+3. Save.
+
+---
+
+### Step 2 — Create a Proxy Provider
+
+1. Go to **Admin Interface → Applications → Providers → Create**.
+2. Choose **Proxy Provider**.
+3. Fill in:
+   - **Name**: e.g., `traefik-dashboard-provider`
+   - **Authorization flow**: choose your preferred flow (e.g., `default-provider-authorization-implicit-consent`)
+   - **Mode**: choose one:
+
+     | Mode | When to use |
+     |------|-------------|
+     | **Forward auth (single application)** | Protect only the Traefik dashboard URL |
+     | **Forward auth (domain level)** | Protect all subdomains under a single domain via one outpost |
+
+   - For **single application** mode, set **External Host** to `https://traefik.example.com` (your `traefik_domain`).
+   - For **domain level** mode, set **Cookie domain** to `example.com` (your top-level domain).
+4. Save, then go back to the Application you created and assign this provider to it.
+
+---
+
+### Step 3 — Assign the Provider to an Outpost
+
+1. Go to **Admin Interface → Applications → Outposts**.
+2. Either edit an existing **Proxy** outpost or create a new one:
+   - **Type**: Proxy
+   - **Integration**: Docker (if managed by Authentik) or External (if you run it manually).
+3. Under **Applications**, add the `Traefik Dashboard` application.
+4. Save — Authentik will deploy or update the outpost automatically if using Docker integration.
+
+> **Tip:** For a self-hosted outpost running inside Docker Compose, see
+> [Authentik outpost documentation](https://docs.goauthentik.io/docs/add-secure-apps/outposts/).
+
+---
+
+### Step 4 — Get the Outpost URL
+
+1. Go to **Admin Interface → Applications → Outposts**.
+2. Click **View Setup** on your outpost.
+3. Copy the **traefik** URL — it looks like:
+
+   ```
+   https://auth.example.com/outpost.goauthentik.io/auth/traefik
+   ```
+
+   This is the value you will use for `authentik_outpost_url`.
+
+> **Note:** If the outpost runs as a separate container on the shared network,
+> use the container's internal URL instead, e.g.:
+> `http://authentik-proxy:9000/outpost.goauthentik.io/auth/traefik`
+
+---
+
+### Step 5 — Run Copier
+
+When running `copier copy`, select `authentik` as the auth method and paste the URL:
+
+```
+dashboard_auth: authentik
+authentik_outpost_url: https://auth.example.com/outpost.goauthentik.io/auth/traefik
+```
+
+---
+
+### What gets generated
+
+The template adds these labels to the Traefik container:
+
+```yaml
+# ForwardAuth middleware pointing at the Authentik outpost
+- "traefik.http.middlewares.authentik.forwardauth.address=<authentik_outpost_url>"
+- "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
+- "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=\
+    X-authentik-username,X-authentik-groups,X-authentik-email,\
+    X-authentik-name,X-authentik-uid,X-authentik-jwt,\
+    X-authentik-meta-jwks,X-authentik-meta-outpost,\
+    X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
+
+# Dashboard router using the authentik middleware
+- "traefik.http.routers.api.middlewares=authentik"
+```
+
+| Label | Purpose |
+|-------|---------|
+| `forwardauth.address` | URL Traefik calls to verify each request |
+| `trustForwardHeader` | Pass `X-Forwarded-*` headers upstream to the outpost |
+| `authResponseHeaders` | Headers Authentik returns that Traefik forwards to the backend |
+
+---
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| `401 Unauthorized` on all requests | Outpost URL wrong or unreachable | Check `authentik_outpost_url`; ensure the outpost is on the shared network |
+| Redirect loop between Traefik and Authentik | Dashboard domain not excluded in Authentik provider | In the provider, add `traefik_domain` to the **Unauthenticated Paths** regex |
+| `500` from outpost | Outpost cannot reach Authentik core | Verify `AUTHENTIK_HOST` env var on the outpost container |
+| Cookie not set after login | Domain mismatch | For domain-level mode, ensure **Cookie domain** in the provider matches your domain |
 
 ---
 
