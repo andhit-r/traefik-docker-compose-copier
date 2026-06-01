@@ -64,6 +64,16 @@ class TestFileGeneration:
         out = generate(tmp_path, base_answers)
         assert (out / ".gitignore").exists()
 
+    def test_copier_answers_file_exists(self, tmp_path, base_answers):
+        out = generate(tmp_path, base_answers)
+        assert (out / ".copier-answers.yml").exists()
+
+    def test_copier_answers_contains_expected_keys(self, tmp_path, base_answers):
+        out = generate(tmp_path, base_answers)
+        data = load_yaml(out / ".copier-answers.yml")
+        for key in ("project_name", "network_prefix", "traefik_domain", "dashboard_auth"):
+            assert key in data, f"Expected key not found in .copier-answers.yml: {key}"
+
     def test_docker_compose_is_valid_yaml(self, tmp_path, base_answers):
         out = generate(tmp_path, base_answers)
         data = load_yaml(out / "docker-compose.yml")

@@ -84,13 +84,29 @@ Three mutually exclusive patterns in `docker-compose.yml.jinja`:
 
 ## Build & test
 
+**Selalu gunakan Makefile untuk menjalankan test lokal.** Jangan jalankan `pytest` atau perintah lain secara langsung.
+
+Setiap `make` target di bawah ini **identik** dengan job GitHub Actions yang bersesuaian:
+
+| Perintah lokal | CI job | Keterangan |
+|---|---|---|
+| `make lint` | `lint` | yamllint pada `copier.yml` + `tests/scenarios/` |
+| `make test` | `test` | pytest Python 3.11 & 3.12 via Docker |
+| `make validate-output` | `validate-output` | copier copy + validasi YAML + `docker compose config` semua scenario |
+| `make compose-up` | `compose-up` | `docker compose up/down` + verifikasi service berjalan, semua scenario |
+| `make ci` | semua job | Jalankan keempat target di atas sekaligus |
+
 ```bash
-pip install -r requirements-dev.txt
+# Jalankan seluruh CI check lokal (paling lengkap, setara GitHub Actions)
+make ci
 
-# Run all tests
-python3 -m pytest tests/ -v
+# Atau per tahap:
+make lint
+make test
+make validate-output
+make compose-up
 
-# Manually generate a scenario
+# Generate scenario secara manual
 copier copy . /tmp/out --defaults --trust --data-file tests/scenarios/with_beszel.yml
 ```
 
